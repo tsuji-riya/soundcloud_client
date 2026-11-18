@@ -1,5 +1,7 @@
 //! Minimal client for SoundCloud's undocumented api-v2 (the one soundcloud.com itself uses).
 
+use std::collections::HashMap;
+
 use futures_util::{stream, StreamExt, TryStreamExt};
 use reqwest::{Client, Response, StatusCode, Url};
 use serde_json::Value;
@@ -22,17 +24,11 @@ impl SoundCloud {
         Self { http, client_id: Mutex::new(None) }
     }
 
-    pub async fn search(&self, q: &str) -> Result<Value> {
-        let mut res = self.get(&format!("{API}/search/tracks"), &[("q", q), ("limit", "30")]).await?;
-        Ok(res["collection"].take())
-    }
-
-    /// Timed comments as shown on the waveform (`timestamp` in ms; may be null).
-    // shortcut: first page only (up to 200, newest first); follow `next_href` if busy tracks need all of them.
-    pub async fn comments(&self, track_id: u64) -> Result<Value> {
-        let q = [("threaded", "0"), ("filter_replies", "1"), ("limit", "200")];
-        let mut res = self.get(&format!("{API}/tracks/{track_id}/comments"), &q).await?;
-        Ok(res["collection"].take())
+    /// GET any api-v2 endpoint. `url` is a path (`/users/1`) or a full api-v2 URL such as a `next_href`.
+    pub async fn api(&self, url: &str, query: &HashMap<String, String>) -> Result<Value> {
+        let url = api_url(url)?;
+        let query: Vec<(&str, &str)> = query.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        self.get(url.as_str(), &query).await
     }
 
     /// `{width, height, samples}` behind a track's `waveform_url`.
@@ -110,6 +106,23 @@ impl SoundCloud {
         }
         Err("soundcloud.com から client_id を取得できませんでした".into())
     }
+}
+
+/// Resolves against api-v2 and refuses any other origin (the URL comes from the webview).
+fn api_url(url: &str) -> Result<Url> {
+    let base = Url::parse(API)?;
+    let mut url = base.join(url)?;
+    if url.origin() != base.origin() {
+        return Err("only api-v2.soundcloud.com may be requested".into());
+    }
+    // next_href can carry a stale client_id; `get` appends the current one.
+    let pairs: Vec<(String, String)> =
+        url.query_pairs().filter(|(k, _)| k != "client_id").map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
+    url.set_query(None);
+    if !pairs.is_empty() {
+        url.query_pairs_mut().extend_pairs(pairs);
+    }
+    Ok(url)
 }
 
 fn script_urls(html: &str) -> Vec<&str> {
@@ -215,6 +228,18 @@ mod tests {
         let sc = SoundCloud::new();
         for url in ["https://evil.example/x.json", "http://wave.sndcdn.com/x.json", "file:///etc/passwd"] {
             assert!(tauri::async_runtime::block_on(sc.waveform(url)).is_err(), "{url}");
+        }
+    }
+
+    #[test]
+    fn api_urls_stay_on_api_v2() {
+        assert_eq!(api_url("/users/1/tracks").unwrap().as_str(), "https://api-v2.soundcloud.com/users/1/tracks");
+        assert_eq!(
+            api_url("https://api-v2.soundcloud.com/search/tracks?q=a+b&client_id=old&offset=30").unwrap().as_str(),
+            "https://api-v2.soundcloud.com/search/tracks?q=a+b&offset=30"
+        );
+        for bad in ["https://evil.example/x", "//evil.example/x", "http://api-v2.soundcloud.com/x", "file:///etc/passwd"] {
+            assert!(api_url(bad).is_err(), "{bad}");
         }
     }
 

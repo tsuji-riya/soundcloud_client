@@ -1,8 +1,8 @@
 import { Label, SkeletonBox, Spinner } from '@primer/react'
-import { Blankslate } from '@primer/react/experimental'
-import { HeartIcon, PlayIcon, SearchIcon } from '@primer/octicons-react'
-import { PlayGlyph } from './icons.jsx'
+import { HeartIcon, PlayIcon } from '@primer/octicons-react'
+import { PauseGlyph, PlayGlyph } from './icons.jsx'
 import { art, compact, fmt } from './format.js'
+import { useApp } from './hooks.js'
 
 /** Animated bars marking the playing row (static when paused). */
 const Equalizer = ({ paused }) => (
@@ -13,48 +13,37 @@ const Equalizer = ({ paused }) => (
   </span>
 )
 
-export default function TrackList({ tracks, searched, searching, currentId, loadingId, paused, onPlay }) {
-  if (searching)
-    return (
-      <div className="tracks" aria-busy="true" aria-label="検索中">
-        {Array.from({ length: 6 }, (_, i) => (
-          <div key={i} className="track track-skeleton">
-            <SkeletonBox width={20} height={14} />
-            <SkeletonBox width={48} height={48} />
-            <span className="track-text">
-              <SkeletonBox width="60%" height={14} />
-              <SkeletonBox width="30%" height={12} />
-            </span>
-          </div>
-        ))}
+export const TrackSkeleton = ({ rows = 6 }) => (
+  <div className="tracks" aria-busy="true" aria-label="読み込み中">
+    {Array.from({ length: rows }, (_, i) => (
+      <div key={i} className="track">
+        <span className="track-play">
+          <SkeletonBox width={20} height={14} />
+          <SkeletonBox width={48} height={48} />
+        </span>
+        <span className="track-text">
+          <SkeletonBox width="60%" height={14} />
+          <SkeletonBox width="30%" height={12} />
+        </span>
       </div>
-    )
+    ))}
+  </div>
+)
 
-  if (!tracks.length)
-    return (
-      <Blankslate spacious>
-        <Blankslate.Visual>
-          <SearchIcon size="medium" />
-        </Blankslate.Visual>
-        <Blankslate.Heading>{searched ? '見つかりませんでした' : '曲を探す'}</Blankslate.Heading>
-        <Blankslate.Description>
-          {searched ? '別のキーワードで検索してみてください。' : '上の検索ボックスに曲名やアーティスト名を入力してください。'}
-        </Blankslate.Description>
-      </Blankslate>
-    )
-
+/** Track rows; playing one queues the whole list. Title opens the track page, artist the user page. */
+export default function TrackList({ tracks, numbered = true }) {
+  const { play, go, current, paused, loadingId } = useApp()
   return (
     <ol className="tracks">
       {tracks.map((t, i) => {
-        const isCurrent = t.id === currentId
+        const isCurrent = t.id === current?.id
         return (
-          <li key={t.id}>
+          <li key={t.id} className="track" aria-current={isCurrent ? 'true' : undefined}>
             <button
               type="button"
-              className="track"
-              aria-current={isCurrent ? 'true' : undefined}
-              aria-label={`${t.title} — ${t.user.username} を再生`}
-              onClick={() => onPlay(t)}
+              className="track-play"
+              aria-label={`${t.title} を${isCurrent && !paused ? '一時停止' : '再生'}`}
+              onClick={() => play(t, tracks)}
             >
               <span className="track-index">
                 {loadingId === t.id ? (
@@ -62,30 +51,32 @@ export default function TrackList({ tracks, searched, searching, currentId, load
                 ) : isCurrent ? (
                   <Equalizer paused={paused} />
                 ) : (
-                  <>
-                    <span className="track-num">{i + 1}</span>
-                    <span className="track-hover-play">
-                      <PlayGlyph />
-                    </span>
-                  </>
+                  numbered && <span className="track-num">{i + 1}</span>
                 )}
               </span>
-              {art(t) ? <img className="track-art" src={art(t)} alt="" loading="lazy" /> : <span className="track-art" />}
-              <span className="track-text">
-                <span className="track-title">{t.title}</span>
-                <span className="track-artist">{t.user.username}</span>
+              <span className="track-art-wrap">
+                {art(t) ? <img className="track-art" src={art(t)} alt="" loading="lazy" /> : <span className="track-art" />}
+                <span className="track-art-overlay">{isCurrent && !paused ? <PauseGlyph /> : <PlayGlyph />}</span>
               </span>
-              <span className="track-genre">{t.genre && <Label variant="secondary">{t.genre}</Label>}</span>
-              <span className="track-stats">
-                <span title="再生回数">
-                  <PlayIcon size={12} /> {compact(t.playback_count)}
-                </span>
-                <span title="いいね">
-                  <HeartIcon size={12} /> {compact(t.likes_count)}
-                </span>
-              </span>
-              <span className="track-dur">{fmt(t.duration / 1000)}</span>
             </button>
+            <span className="track-text">
+              <button type="button" className="linkish track-title" onClick={() => go({ name: 'track', id: t.id, track: t })}>
+                {t.title}
+              </button>
+              <button type="button" className="linkish track-artist" onClick={() => go({ name: 'user', id: t.user.id })}>
+                {t.user.username}
+              </button>
+            </span>
+            <span className="track-genre">{t.genre && <Label variant="secondary">{t.genre}</Label>}</span>
+            <span className="track-stats">
+              <span title="再生回数">
+                <PlayIcon size={12} /> {compact(t.playback_count)}
+              </span>
+              <span title="いいね">
+                <HeartIcon size={12} /> {compact(t.likes_count)}
+              </span>
+            </span>
+            <span className="track-dur">{fmt(t.duration / 1000)}</span>
           </li>
         )
       })}

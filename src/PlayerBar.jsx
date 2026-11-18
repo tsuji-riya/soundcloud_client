@@ -65,8 +65,21 @@ export default function PlayerBar(p) {
           track && (art(track) ? <img src={art(track)} alt="" /> : <span className="pb-art-empty" />)
         )}
         <div className="pb-now-text">
-          <span className="pb-now-artist">{loading ? '読み込み中…' : (track?.user.username ?? '')}</span>
-          <span className="pb-now-title">{loading?.title ?? track?.title ?? '再生していません'}</span>
+          {loading || !track ? (
+            <>
+              <span className="pb-now-artist">{loading ? '読み込み中…' : ''}</span>
+              <span className="pb-now-title">{loading?.title ?? '再生していません'}</span>
+            </>
+          ) : (
+            <>
+              <button type="button" className="linkish pb-now-artist" onClick={() => p.onOpen({ name: 'user', id: track.user.id })}>
+                {track.user.username}
+              </button>
+              <button type="button" className="linkish pb-now-title" onClick={() => p.onOpen({ name: 'track', id: track.id, track })}>
+                {track.title}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </footer>
