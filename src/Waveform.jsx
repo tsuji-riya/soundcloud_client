@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Avatar } from '@primer/react'
+import { fmt } from './format.js'
 
 export const BARS = 160
 const ORANGE = '#f50'
@@ -15,9 +16,6 @@ export function toBars(samples, height) {
     (_, i) => Math.max(...samples.slice(Math.floor(i * size), Math.ceil((i + 1) * size))) / height || 0,
   )
 }
-
-const fmt = (s) =>
-  Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00'
 
 /**
  * SoundCloud-style seek bar: bars above, dimmer reflection below, played part in orange.
@@ -76,9 +74,8 @@ export default function Waveform({ bars, comments = [], time, duration, onSeek, 
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--base-size-8)' }}>
-      <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', color: ORANGE }}>{fmt(time)}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
+    <div className="wf">
+      <div className="wf-bars">
         <svg
           ref={svg}
           role="slider"
@@ -90,7 +87,6 @@ export default function Waveform({ bars, comments = [], time, duration, onSeek, 
           aria-valuetext={`${fmt(time)} / ${fmt(duration)}`}
           viewBox={`0 0 ${BARS * 3} 100`}
           preserveAspectRatio="none"
-          style={{ display: 'block', width: '100%', height: 72, cursor: 'pointer', touchAction: 'none' }}
           onPointerDown={(e) => {
             if (!duration) return
             e.currentTarget.setPointerCapture(e.pointerId)
@@ -120,7 +116,10 @@ export default function Waveform({ bars, comments = [], time, duration, onSeek, 
             )
           })}
         </svg>
-        {duration > 0 && (
+        <span className="wf-time wf-time-current">{fmt(time)}</span>
+        <span className="wf-time wf-time-total">{fmt(duration)}</span>
+      </div>
+      {duration > 0 && (
           <div style={{ position: 'relative', height: 20 }} onPointerLeave={() => setHoveredComment(null)}>
             {comments.map((c) => (
               <Avatar
@@ -166,8 +165,6 @@ export default function Waveform({ bars, comments = [], time, duration, onSeek, 
             )}
           </div>
         )}
-      </div>
-      <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{fmt(duration)}</span>
     </div>
   )
 }

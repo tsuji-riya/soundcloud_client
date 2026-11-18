@@ -9,6 +9,10 @@ Tauri 2 (Rust) + React + [Primer React](https://primer.style/react) 製の非公
 - 波形の下にタイムドコメントのアバターを並べ、再生位置が通過したコメントを 3 秒間吹き出しで表示する (アバターにホバーでも表示)。
 - 波形シークバーをドラッグすると、デコード済み PCM を AudioWorklet (`src/scratch-worklet.js`) で読み出してレコードのスクラッチのように鳴らす。ドラッグ速度がそのまま再生速度・ピッチになり、逆方向に動かすと逆再生、止めると無音になる。トラックパッドの 2 本指横スワイプでも同じようにスクラッチ/シークできる (指を右へ動かすと先へ進む)。
 
+## UI
+
+上部に検索バー、中央に再生中の曲のヒーロー (ぼかしたアートワーク背景・波形・コメント)、下部に固定プレイヤーバー (前/再生/次・タイムライン・音量)。検索結果は再生キューを兼ね、曲が終わると次の曲へ進む。Space キーで再生/一時停止。ライト/ダークは OS 設定に追従する。
+
 ## 開発
 
 前提: Rust, Node.js, [Tauri の OS 依存パッケージ](https://tauri.app/start/prerequisites/)。Linux では mp3/AAC 再生に GStreamer プラグイン (`gst-plugins-good` / `gst-plugins-bad` / `gst-libav` 等) も必要。
