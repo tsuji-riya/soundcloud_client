@@ -1,5 +1,6 @@
 //! Minimal client for SoundCloud's undocumented api-v2 (the one soundcloud.com itself uses).
 
+use futures_util::{stream, StreamExt, TryStreamExt};
 use reqwest::{Client, Response, StatusCode, Url};
 use serde_json::Value;
 use tokio::sync::Mutex;
@@ -7,6 +8,7 @@ use tokio::sync::Mutex;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 const API: &str = "https://api-v2.soundcloud.com";
+const SEGMENT_CONCURRENCY: usize = 8;
 const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
 pub struct SoundCloud {
@@ -38,13 +40,18 @@ impl SoundCloud {
             return self.bytes(url).await;
         }
         // HLS: (init segment +) media segments concatenated form a plain playable file.
-        // shortcut: segments are fetched sequentially and fully before playback; parallelize/stream if start latency matters.
+        // shortcut: playback still waits for the whole file; switch to MSE/streaming if that latency matters.
         let playlist = self.http.get(url).send().await?.error_for_status()?.text().await?;
-        let mut out = Vec::new();
-        for seg in segment_urls(&Url::parse(url)?, &playlist)? {
-            out.extend(self.bytes(seg.as_str()).await?);
-        }
-        Ok(out)
+        self.concat(segment_urls(&Url::parse(url)?, &playlist)?).await
+    }
+
+    /// Downloads up to SEGMENT_CONCURRENCY segments at once; `buffered` keeps playlist order.
+    async fn concat(&self, segments: Vec<Url>) -> Result<Vec<u8>> {
+        let parts: Vec<Vec<u8>> = stream::iter(segments.into_iter().map(|seg| async move { self.bytes(seg.as_str()).await }))
+            .buffered(SEGMENT_CONCURRENCY)
+            .try_collect()
+            .await?;
+        Ok(parts.concat())
     }
 
     async fn bytes(&self, url: &str) -> Result<Vec<u8>> {
@@ -158,6 +165,31 @@ mod tests {
         ]);
         assert_eq!(pick_transcoding(&t).unwrap()["url"], "mp3");
         assert!(pick_transcoding(&json!([t[0]])).is_none());
+    }
+
+    #[test]
+    fn fetches_segments_concurrently_in_order() {
+        use std::io::{Read, Write};
+        use std::time::{Duration, Instant};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for conn in listener.incoming() {
+                std::thread::spawn(move || {
+                    let mut conn = conn.unwrap();
+                    let mut req = [0; 1024];
+                    let n = conn.read(&mut req).unwrap();
+                    let i: u64 = String::from_utf8_lossy(&req[..n]).split(['/', ' ']).nth(2).unwrap().parse().unwrap();
+                    std::thread::sleep(Duration::from_millis(300 - i * 30)); // earlier segments finish last
+                    write!(conn, "HTTP/1.1 200 OK\r\ncontent-length: 1\r\nconnection: close\r\n\r\n{i}").unwrap();
+                });
+            }
+        });
+        let urls = (0..8).map(|i| Url::parse(&format!("http://127.0.0.1:{port}/{i}")).unwrap()).collect();
+        let start = Instant::now();
+        let out = tauri::async_runtime::block_on(SoundCloud::new().concat(urls)).unwrap();
+        assert_eq!(out, b"01234567");
+        assert!(start.elapsed() < Duration::from_millis(1000), "took {:?}; sequential would be ~1.6s", start.elapsed());
     }
 
     #[test]
