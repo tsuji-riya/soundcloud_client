@@ -16,15 +16,23 @@ export function toBars(samples, height) {
 const fmt = (s) => (Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00')
 
 /** SoundCloud-style seek bar: bars above, dimmer reflection below, played part in orange. */
-export default function Waveform({ bars, time, duration, onSeek }) {
+/**
+ * SoundCloud-style seek bar: bars above, dimmer reflection below, played part in orange.
+ * Pointer drags report start/move/end so the parent can scratch; keys seek directly.
+ */
+export default function Waveform({ bars, time, duration, onSeek, onScrubStart, onScrub, onScrubEnd }) {
   const [hover, setHover] = useState(null)
   const ratio = (e) => {
     const r = e.currentTarget.getBoundingClientRect()
     return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
   }
-  const seek = (t) => duration && onSeek(Math.min(duration, Math.max(0, t)))
   const step = { ArrowLeft: -5, ArrowRight: 5, Home: -Infinity, End: Infinity }
   const played = duration ? time / duration : 0
+  const end = (e) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    onScrubEnd(ratio(e) * duration)
+  }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--base-size-8)' }}>
@@ -39,14 +47,23 @@ export default function Waveform({ bars, time, duration, onSeek }) {
         aria-valuetext={`${fmt(time)} / ${fmt(duration)}`}
         viewBox={`0 0 ${BARS * 3} 100`}
         preserveAspectRatio="none"
-        style={{ flex: 1, height: 72, cursor: 'pointer' }}
-        onClick={(e) => seek(ratio(e) * duration)}
-        onMouseMove={(e) => setHover(ratio(e))}
-        onMouseLeave={() => setHover(null)}
+        style={{ flex: 1, height: 72, cursor: 'pointer', touchAction: 'none' }}
+        onPointerDown={(e) => {
+          if (!duration) return
+          e.currentTarget.setPointerCapture(e.pointerId)
+          onScrubStart(ratio(e) * duration)
+        }}
+        onPointerMove={(e) => {
+          setHover(ratio(e))
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) onScrub(ratio(e) * duration)
+        }}
+        onPointerUp={end}
+        onPointerCancel={end}
+        onPointerLeave={() => setHover(null)}
         onKeyDown={(e) => {
-          if (!(e.key in step)) return
+          if (!(e.key in step) || !duration) return
           e.preventDefault()
-          seek(time + step[e.key])
+          onSeek(Math.min(duration, Math.max(0, time + step[e.key])))
         }}
       >
         {(bars || FLAT).map((h, i) => {
