@@ -53,13 +53,16 @@ export default function App() {
       const bars = invoke('waveform', { url: track.waveform_url })
         .then((w) => toBars(w.samples, w.height))
         .catch(() => null)
+      const comments = invoke('comments', { trackId: track.id })
+        .then((cs) => cs.filter((c) => c.timestamp != null).sort((a, b) => a.timestamp - b.timestamp))
+        .catch(() => [])
       // Created on a user gesture so the AudioContext may start.
       scratch.current ??= await createScratcher().catch(() => null)
       const bytes = await invoke('stream', { trackId: track.id })
       const src = URL.createObjectURL(new Blob([bytes]))
       // Without decoded PCM (unsupported codec), dragging just seeks on release.
       scratch.current?.load(bytes).catch(() => {})
-      setCurrent({ track, src, bars: await bars })
+      setCurrent({ track, src, bars: await bars, comments: await comments })
       audio.current.src = src
       await audio.current.play()
     })
@@ -96,6 +99,7 @@ export default function App() {
           <div style={{ flex: 1 }}>
             <Waveform
               bars={current?.bars}
+              comments={current?.comments}
               time={scrub ?? time}
               duration={duration}
               onSeek={(t) => (audio.current.currentTime = t)}

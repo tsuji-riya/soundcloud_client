@@ -27,6 +27,14 @@ impl SoundCloud {
         Ok(res["collection"].take())
     }
 
+    /// Timed comments as shown on the waveform (`timestamp` in ms; may be null).
+    // shortcut: first page only (up to 200, newest first); follow `next_href` if busy tracks need all of them.
+    pub async fn comments(&self, track_id: u64) -> Result<Value> {
+        let q = [("threaded", "0"), ("filter_replies", "1"), ("limit", "200")];
+        let mut res = self.get(&format!("{API}/tracks/{track_id}/comments"), &q).await?;
+        Ok(res["collection"].take())
+    }
+
     /// `{width, height, samples}` behind a track's `waveform_url`.
     pub async fn waveform(&self, url: &str) -> Result<Value> {
         let url = Url::parse(&url.replace(".png", ".json"))?; // older tracks point at the PNG rendering
