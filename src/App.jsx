@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { ActionList, Avatar, Button, Flash, Heading, Spinner, Text, TextInput } from '@primer/react'
-import { SearchIcon } from '@primer/octicons-react'
+import { ActionList, Avatar, Button, Flash, Heading, IconButton, Spinner, Text, TextInput } from '@primer/react'
+import { PauseIcon, PlayIcon, SearchIcon } from '@primer/octicons-react'
+import Waveform, { toBars } from './Waveform.jsx'
 
 export default function App() {
   const [query, setQuery] = useState('')
@@ -9,6 +10,9 @@ export default function App() {
   const [current, setCurrent] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [time, setTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [paused, setPaused] = useState(true)
   const audio = useRef(null)
 
   // Release the previous blob when the source changes / on unmount
@@ -33,9 +37,13 @@ export default function App() {
 
   const play = (track) =>
     run(async () => {
+      // A missing waveform shouldn't block playback; Waveform falls back to flat bars.
+      const bars = invoke('waveform', { url: track.waveform_url })
+        .then((w) => toBars(w.samples, w.height))
+        .catch(() => null)
       const bytes = await invoke('stream', { trackId: track.id })
       const src = URL.createObjectURL(new Blob([bytes]))
-      setCurrent({ track, src })
+      setCurrent({ track, src, bars: await bars })
       audio.current.src = src
       await audio.current.play()
     })
@@ -62,7 +70,25 @@ export default function App() {
         <Text as="p" weight="semibold">
           {busy ? <Spinner size="small" /> : null} {current ? `${current.track.user.username} — ${current.track.title}` : '未再生'}
         </Text>
-        <audio ref={audio} controls style={{ width: '100%' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--base-size-8)' }}>
+          <IconButton
+            icon={paused ? PlayIcon : PauseIcon}
+            aria-label={paused ? '再生' : '一時停止'}
+            disabled={!current}
+            onClick={() => (paused ? audio.current.play() : audio.current.pause())}
+          />
+          <div style={{ flex: 1 }}>
+            <Waveform bars={current?.bars} time={time} duration={duration} onSeek={(t) => (audio.current.currentTime = t)} />
+          </div>
+        </div>
+        <audio
+          ref={audio}
+          onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+          // Concatenated HLS blobs may report Infinity; the API's duration (ms) is the fallback.
+          onDurationChange={(e) => setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : current?.track.duration / 1000)}
+          onPlay={() => setPaused(false)}
+          onPause={() => setPaused(true)}
+        />
       </div>
 
       <ActionList>

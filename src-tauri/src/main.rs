@@ -17,10 +17,15 @@ async fn stream(sc: State<'_, SoundCloud>, track_id: u64) -> Result<Response, St
     sc.audio(track_id).await.map(Response::new).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn waveform(sc: State<'_, SoundCloud>, url: String) -> Result<serde_json::Value, String> {
+    sc.waveform(&url).await.map_err(|e| e.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(SoundCloud::new())
-        .invoke_handler(tauri::generate_handler![search, stream])
+        .invoke_handler(tauri::generate_handler![search, stream, waveform])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

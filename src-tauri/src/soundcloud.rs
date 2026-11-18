@@ -27,6 +27,16 @@ impl SoundCloud {
         Ok(res["collection"].take())
     }
 
+    /// `{width, height, samples}` behind a track's `waveform_url`.
+    pub async fn waveform(&self, url: &str) -> Result<Value> {
+        let url = Url::parse(&url.replace(".png", ".json"))?; // older tracks point at the PNG rendering
+        // The URL comes from the webview, so don't let it make us fetch arbitrary hosts.
+        if url.scheme() != "https" || url.host_str() != Some("wave.sndcdn.com") {
+            return Err("unexpected waveform URL".into());
+        }
+        Ok(self.http.get(url).send().await?.error_for_status()?.json().await?)
+    }
+
     /// Downloads the full audio of a track (mp3 or fragmented mp4).
     pub async fn audio(&self, track_id: u64) -> Result<Vec<u8>> {
         let track = self.get(&format!("{API}/tracks/{track_id}"), &[]).await?;
@@ -190,6 +200,14 @@ mod tests {
         let out = tauri::async_runtime::block_on(SoundCloud::new().concat(urls)).unwrap();
         assert_eq!(out, b"01234567");
         assert!(start.elapsed() < Duration::from_millis(1000), "took {:?}; sequential would be ~1.6s", start.elapsed());
+    }
+
+    #[test]
+    fn rejects_foreign_waveform_hosts() {
+        let sc = SoundCloud::new();
+        for url in ["https://evil.example/x.json", "http://wave.sndcdn.com/x.json", "file:///etc/passwd"] {
+            assert!(tauri::async_runtime::block_on(sc.waveform(url)).is_err(), "{url}");
+        }
     }
 
     #[test]
