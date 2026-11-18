@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export const BARS = 160
 const ORANGE = '#f50'
@@ -22,6 +22,38 @@ const fmt = (s) => (Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.fl
  */
 export default function Waveform({ bars, time, duration, onSeek, onScrubStart, onScrub, onScrubEnd }) {
   const [hover, setHover] = useState(null)
+  const svg = useRef(null)
+  const props = useRef(null)
+  props.current = { time, duration, onScrubStart, onScrub, onScrubEnd }
+
+  // Two-finger horizontal trackpad swipes scrub like dragging the playhead by the same distance.
+  // Native listener because React's onWheel is passive and can't preventDefault.
+  useEffect(() => {
+    const el = svg.current
+    let pos = null
+    let timer
+    const onWheel = (e) => {
+      const { time, duration, onScrubStart, onScrub, onScrubEnd } = props.current
+      if (!duration || (pos === null && Math.abs(e.deltaX) <= Math.abs(e.deltaY))) return
+      e.preventDefault()
+      // macOS "natural scrolling" inverts deltaX; WebKit reports it, elsewhere assume the macOS default (on).
+      const finger = (e.webkitDirectionInvertedFromDevice === false ? e.deltaX : -e.deltaX) * (e.deltaMode ? 16 : 1)
+      if (pos === null) onScrubStart((pos = time))
+      pos = Math.min(duration, Math.max(0, pos + (finger / el.getBoundingClientRect().width) * duration))
+      onScrub(pos)
+      // Wheel events have no "end"; momentum events after lift-off keep the scrub alive like a flung record.
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        onScrubEnd(pos)
+        pos = null
+      }, 150)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      clearTimeout(timer)
+    }
+  }, [])
   const ratio = (e) => {
     const r = e.currentTarget.getBoundingClientRect()
     return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
@@ -38,6 +70,7 @@ export default function Waveform({ bars, time, duration, onSeek, onScrubStart, o
     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--base-size-8)' }}>
       <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', color: ORANGE }}>{fmt(time)}</span>
       <svg
+        ref={svg}
         role="slider"
         tabIndex={0}
         aria-label="再生位置"

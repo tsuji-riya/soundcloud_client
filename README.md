@@ -6,7 +6,7 @@ Tauri 2 (Rust) + React + [Primer React](https://primer.style/react) 製の非公
 
 - Rust 側 (`src-tauri/src/soundcloud.rs`) が soundcloud.com の JS バンドルから `client_id` を取得し、Web 版と同じ非公開 API `api-v2.soundcloud.com` を呼ぶ。CORS を避けるため HTTP はすべて Rust 側で行う。
 - 再生時はストリームを progressive mp3 → mp3 HLS → その他の暗号化なし HLS の順に選び、HLS はセグメントを連結して 1 ファイルにしてから WebView に渡す。DRM 付き (encrypted-hls) のみの曲は再生できない。
-- 波形シークバーをドラッグすると、デコード済み PCM を AudioWorklet (`src/scratch-worklet.js`) で読み出してレコードのスクラッチのように鳴らす。ドラッグ速度がそのまま再生速度・ピッチになり、逆方向に動かすと逆再生、止めると無音になる。
+- 波形シークバーをドラッグすると、デコード済み PCM を AudioWorklet (`src/scratch-worklet.js`) で読み出してレコードのスクラッチのように鳴らす。ドラッグ速度がそのまま再生速度・ピッチになり、逆方向に動かすと逆再生、止めると無音になる。トラックパッドの 2 本指横スワイプでも同じようにスクラッチ/シークできる (指を右へ動かすと先へ進む)。
 
 ## 開発
 
